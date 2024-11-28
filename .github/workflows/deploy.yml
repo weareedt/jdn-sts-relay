@@ -25,7 +25,7 @@ jobs:
           echo "MESOLITICA_API_KEY=${{ secrets.MESOLITICA_API_KEY }}" >> .env
           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
           echo "PORT=${{ secrets.PORT }}" >> .env
-          echo "WS_PORT=${{ secrets.WS_PORT }}" >> .env
+          echo "WS_PORT=8081" >> .env
           echo "HTTP_PORT=${{ secrets.HTTP_PORT }}" >> .env
           echo "REACT_APP_LOCAL_RELAY_SERVER_URL=${{ secrets.REACT_APP_LOCAL_RELAY_SERVER_URL }}" >> .env
           echo "AI_SERVER_URL=${{ secrets.AI_SERVER_URL }}" >> .env
@@ -66,13 +66,13 @@ jobs:
             sudo tee /etc/nginx/sites-available/jdn-sts-relay << 'EOF'
             server {
                 listen 443 ssl;
-                server_name ${{ secrets.DO_HOST }};
+                server_name _;
 
                 ssl_certificate /etc/nginx/ssl/nginx.crt;
                 ssl_certificate_key /etc/nginx/ssl/nginx.key;
 
                 location / {
-                    proxy_pass http://localhost:${{ secrets.WS_PORT }};
+                    proxy_pass http://localhost:8081;
                     proxy_http_version 1.1;
                     proxy_set_header Upgrade $http_upgrade;
                     proxy_set_header Connection "upgrade";
