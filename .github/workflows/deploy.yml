@@ -1,0 +1,71 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main # or master, depending on your default branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env file
+        run: |
+          echo "MESOLITICA_API_KEY=${{ secrets.MESOLITICA_API_KEY }}" >> .env
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+          echo "PORT=${{ secrets.PORT }}" >> .env
+          echo "WS_PORT=${{ secrets.WS_PORT }}" >> .env
+          echo "HTTP_PORT=${{ secrets.HTTP_PORT }}" >> .env
+          echo "REACT_APP_LOCAL_RELAY_SERVER_URL=${{ secrets.REACT_APP_LOCAL_RELAY_SERVER_URL }}" >> .env
+          echo "AI_SERVER_URL=${{ secrets.AI_SERVER_URL }}" >> .env
+          echo "AI_SERVER_TOKEN=${{ secrets.AI_SERVER_TOKEN }}" >> .env
+
+      - name: Deploy to DigitalOcean
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            # Create app directory if it doesn't exist
+            mkdir -p ~/jdn-sts-relay
+
+            # Stop existing PM2 process if it exists
+            pm2 stop jdn-sts-relay || true
+            pm2 delete jdn-sts-relay || true
+
+      - name: Copy files to DigitalOcean
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          source: ".,!node_modules,!.git"
+          target: "~/jdn-sts-relay"
+
+      - name: Start application
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            cd ~/jdn-sts-relay
+            npm install
+            # Install PM2 globally if not already installed
+            npm install pm2 -g
+            # Start the application with PM2
+            pm2 start index.js --name jdn-sts-relay
+            pm2 save
