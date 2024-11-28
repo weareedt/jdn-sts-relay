@@ -38,12 +38,58 @@ jobs:
           username: ${{ secrets.DO_USERNAME }}
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
+            # Install Nginx if not installed
+            if ! command -v nginx &> /dev/null; then
+              sudo apt-get update
+              sudo apt-get install -y nginx
+            fi
+
             # Create app directory if it doesn't exist
             mkdir -p ~/jdn-sts-relay
+
+            # Create SSL directory
+            sudo mkdir -p /etc/nginx/ssl
+
+            # Generate self-signed certificate if it doesn't exist
+            if [ ! -f /etc/nginx/ssl/nginx.crt ]; then
+              sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /etc/nginx/ssl/nginx.key \
+                -out /etc/nginx/ssl/nginx.crt \
+                -subj "/C=US/ST=State/L=City/O=Organization/CN=${{ secrets.DO_HOST }}"
+            fi
 
             # Stop existing PM2 process if it exists
             pm2 stop jdn-sts-relay || true
             pm2 delete jdn-sts-relay || true
+
+            # Configure Nginx for WebSocket SSL
+            sudo tee /etc/nginx/sites-available/jdn-sts-relay << 'EOF'
+            server {
+                listen 443 ssl;
+                server_name ${{ secrets.DO_HOST }};
+
+                ssl_certificate /etc/nginx/ssl/nginx.crt;
+                ssl_certificate_key /etc/nginx/ssl/nginx.key;
+
+                location / {
+                    proxy_pass http://localhost:${{ secrets.WS_PORT }};
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection "upgrade";
+                    proxy_set_header Host $host;
+                    proxy_cache_bypass $http_upgrade;
+                }
+            }
+            EOF
+
+            # Enable the site
+            sudo ln -sf /etc/nginx/sites-available/jdn-sts-relay /etc/nginx/sites-enabled/
+            
+            # Remove default nginx site
+            sudo rm -f /etc/nginx/sites-enabled/default
+
+            # Test and reload Nginx
+            sudo nginx -t && sudo systemctl reload nginx
 
       - name: Copy files to DigitalOcean
         uses: appleboy/scp-action@master
